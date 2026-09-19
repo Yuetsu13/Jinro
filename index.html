@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0d0f14">
+<title>人狼ゲーム</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:#0d0f14;color:#f5f6f8;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif}
+body{min-height:100dvh}
+button{font:inherit}
+#app{min-height:100dvh}
+.screen{min-height:100dvh;padding:24px 18px 30px;display:flex;flex-direction:column}
+.center{justify-content:center;align-items:center;text-align:center}
+.wrap{width:100%;max-width:520px;margin:0 auto}
+h1{font-size:36px;margin:0 0 8px;font-weight:800}
+h2{font-size:27px;margin:0 0 12px}
+p{color:#aeb3bd;line-height:1.6}
+.card{background:#181b22;border:1px solid #2b303a;border-radius:18px;padding:17px;margin:10px 0}
+.sub{font-size:13px;color:#8f95a1;letter-spacing:.08em}
+.btn{width:100%;border:0;border-radius:14px;padding:16px;margin-top:10px;background:#f2f3f5;color:#111318;font-weight:800}
+.btn.dark{background:#292e38;color:#fff}
+.btn:disabled{opacity:.35}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.choice,.player{border:1px solid #303641;background:#191c23;color:#fff;border-radius:14px;padding:16px;font-weight:750}
+.choice.active,.player.selected{background:#343a46;border-color:#f4f5f7}
+.player-list{display:grid;gap:9px;margin:14px 0}
+.top{display:flex;justify-content:space-between;gap:8px;margin-bottom:22px}
+.badge{font-size:12px;background:#242933;border-radius:999px;padding:7px 10px;color:#c9cdd5}
+.notice{background:#232731;border-radius:14px;padding:14px;margin:14px 0;color:#dfe2e8}
+.role{font-size:52px;margin:10px 0}
+.big{font-size:23px;font-weight:850}
+.wolf{color:#ff727d}.human{color:#70d9a0}
+.small{font-size:13px}
+.name-input{width:100%;border:1px solid #303641;background:#191c23;color:#fff;border-radius:14px;padding:14px 15px;outline:none}.name-input:focus{border-color:#f4f5f7}.spacer{flex:1}
+</style>
+</head>
+<body><main id="app"></main><script>
+const app=document.getElementById("app");
+const G={screen:"setup",players:5,wolves:1,ps:[],roles:{},dead:[],nightKill:null,firstKill:null,wolfStep:0,seer:null,guard:null,vote:null,reveal:0};
+
+const roleName={wolf:"狼人",seer:"占卜师",knight:"骑士",villager:"村民"};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function header(t){return `<div class="top"><span class="badge">${G.players}人 · ${G.wolves}狼</span><span class="badge">${t}</span></div>`}
+function alive(){return G.ps.filter(p=>!G.dead.includes(p.id))}
+function win(){
+ const w=alive().filter(p=>G.roles[p.id]=="wolf").length;
+ const h=alive().filter(p=>G.roles[p.id]!="wolf").length;
+ if(w===0)return"村人陣営の勝利";
+ if(w>=h)return"人狼陣営の勝利";
+ return null;
+}
+function render(){({
+ setup,revealIntro,reveal,nightIntro,wolfCoord,wolfSelect,wolfConfirm,seer,seerResult,knight,morning,vote,end
+}[G.screen]||setup)()}
+
+function setup(){
+ app.innerHTML=`<section class="screen center"><div class="wrap">
+ <div class="sub">ONE PHONE · OFFLINE</div><h1>人狼ゲーム</h1>
+ <p>一台の iPhone を順番に回して遊ぶ人狼。</p>
+ <div class="card"><b>玩家人数</b><div class="grid" style="margin-top:10px">${[4,5,6,7,8].map(n=>`<button class="choice ${G.players==n?"active":""}" onclick="setPlayers(${n})">${n}人</button>`).join("")}</div></div>
+ <div class="card"><b>狼人数量</b><div class="grid" style="margin-top:10px">
+ <button class="choice ${G.wolves==1?"active":""}" onclick="setWolves(1)">1 狼</button>
+ <button class="choice ${G.wolves==2?"active":""}" onclick="setWolves(2)" ${G.players<5?"disabled":""}>2 狼</button></div>
+ <p class="small">只能选择 1 狼或 2 狼。</p></div>
+ <button class="btn" onclick="start()">开始游戏</button></div></section>`
+}
+function setPlayers(n){G.players=n;if(n<5)G.wolves=1;render()}
+function setWolves(n){if(n==2&&G.players<5)return;G.wolves=n;render()}
+
+function start(){
+ G.ps=Array.from({length:G.players},(_,i)=>({id:i,name:`玩家 ${i+1}`}));
+ let r=Array(G.wolves).fill("wolf");r.push("seer","knight");
+ while(r.length<G.players)r.push("villager");
+ for(let i=r.length-1;i;i--){let j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]]}
+ G.ps.forEach((p,i)=>G.roles[p.id]=r[i]);
+ Object.assign(G,{dead:[],nightKill:null,firstKill:null,wolfStep:0,seer:null,guard:null,vote:null,reveal:0});
+ G.screen="revealIntro";render()
+}
+function revealIntro(){app.innerHTML=`<section class="screen center"><div class="wrap"><div class="role">🔒</div><h2>身份分配</h2><p>逐人查看身份。请确认只有当前玩家看到屏幕。</p><button class="btn" onclick="G.screen='reveal';render()">开始查看</button></div></section>`}
+function reveal(){
+ let p=G.ps[G.reveal],role=G.roles[p.id],extra="";
+ if(role=="wolf"&&G.wolves==2){let partner=G.ps.filter(x=>G.roles[x.id]=="wolf"&&x.id!=p.id)[0];extra=`<div class="notice">你的狼人同伴：<b>${esc(partner.name)}</b></div>`}
+ app.innerHTML=`<section class="screen center"><div class="wrap">${header("身份")}<div class="role">🔐</div><div class="sub">${esc(p.name)}</div><h2>${roleName[role]}</h2>${extra}<button class="btn" onclick="nextReveal()">我已记住身份</button></div></section>`
+}
+function nextReveal(){G.reveal++;G.screen=G.reveal>=G.ps.length?"nightIntro":"reveal";render()}
+
+function nightIntro(){
+ app.innerHTML=`<section class="screen center"><div class="wrap"><div class="role">🌙</div><h2>夜晚开始</h2><p>所有人闭眼。</p><div class="notice">${G.wolves==2?"两名狼人现在同时睁眼，通过眼神或手势决定击杀对象。禁止说话、禁止操作手机。":"狼人现在睁眼，决定今晚的击杀对象。"}<br><br>决定后闭眼，再开始传手机。</div><button class="btn" onclick="G.screen=G.wolves==2?'wolfCoord':'wolfSelect';render()">继续</button></div></section>`
+}
+function wolfCoord(){
+ app.innerHTML=`<section class="screen center"><div class="wrap">${header("狼人行动")}<div class="role">🐺</div><h2>两名狼人</h2><p>现在同时睁眼。</p><div class="notice">只能用眼神 / 手势决定击杀对象。<br><b>不要说话，也不要操作手机。</b></div><button class="btn" onclick="G.screen='wolfSelect';render()">已经决定</button></div></section>`
+}
+function wolfChoices(){return alive().filter(p=>G.roles[p.id]!="wolf")}
+function wolfSelect(){
+ let ws=G.ps.filter(p=>G.roles[p.id]=="wolf"),w=ws[G.wolfStep],choices=wolfChoices();
+ app.innerHTML=`<section class="screen"><div class="wrap">${header("狼人 "+(G.wolfStep+1))}<h2>${esc(w.name)}</h2><p>选择刚才共同决定的击杀目标。</p><div class="notice">只有当前狼人查看手机。</div><div class="player-list">${choices.map(p=>`<button class="player ${G.nightKill===p.id?"selected":""}" onclick="pickKill(${p.id})">${esc(p.name)}</button>`).join("")}</div>${G.nightKill!=null?`<button class="btn" onclick="wolfNext()">确认</button>`:""}</div></section>`
+}
+function pickKill(id){if(G.wolfStep==0){G.nightKill=id;G.firstKill=id}render()}
+function wolfNext(){
+ if(G.wolves==2&&G.wolfStep==0){G.wolfStep=1;G.screen="wolfConfirm"}
+ else G.screen="seer";
+ render()
+}
+function wolfConfirm(){
+ let ws=G.ps.filter(p=>G.roles[p.id]=="wolf"),n=G.ps.find(p=>p.id==G.firstKill)?.name||"";
+ app.innerHTML=`<section class="screen center"><div class="wrap">${header("狼人2确认")}<div class="role">🐺</div><h2>${esc(ws[1].name)}</h2><p>狼人1记录的目标是：</p><div class="notice big">${esc(n)}</div><p>只能确认，不能修改。</p><button class="btn" onclick="G.nightKill=G.firstKill;G.screen='seer';render()">确认</button></div></section>`
+}
+function seer(){
+ let p=G.ps.find(p=>G.roles[p.id]=="seer");
+ if(!p||G.dead.includes(p.id)){G.screen="knight";return render()}
+ let choices=alive().filter(x=>x.id!=p.id);
+ app.innerHTML=`<section class="screen"><div class="wrap">${header("占卜师")}<h2>${esc(p.name)}</h2><p>选择一名玩家进行占卜。</p><div class="player-list">${choices.map(x=>`<button class="player ${G.seer===x.id?"selected":""}" onclick="G.seer=${x.id};render()">${esc(x.name)}</button>`).join("")}</div>${G.seer!=null?`<button class="btn" onclick="G.screen='seerResult';render()">查看结果</button>`:""}</div></section>`
+}
+function seerResult(){
+ let n=G.ps.find(p=>p.id==G.seer).name,w=G.roles[G.seer]=="wolf";
+ app.innerHTML=`<section class="screen center"><div class="wrap">${header("占卜结果")}<div class="role">🔮</div><h2>${esc(n)}</h2><div class="big ${w?"wolf":"human"}">${w?"狼人":"非狼人"}</div><p>只有占卜师可以看到。</p><button class="btn" onclick="G.screen='knight';render()">我已记住</button></div></section>`
+}
+function knight(){
+ let p=G.ps.find(p=>G.roles[p.id]=="knight");
+ if(!p||G.dead.includes(p.id)){G.screen="morning";return render()}
+ let choices=alive().filter(x=>x.id!=p.id);
+ app.innerHTML=`<section class="screen"><div class="wrap">${header("骑士")}<h2>${esc(p.name)}</h2><p>选择今晚要守护的玩家。</p><div class="player-list">${choices.map(x=>`<button class="player ${G.guard===x.id?"selected":""}" onclick="G.guard=${x.id};render()">${esc(x.name)}</button>`).join("")}</div>${G.guard!=null?`<button class="btn" onclick="G.screen='morning';render()">确认守护</button>`:""}</div></section>`
+}
+function morning(){
+ let k=G.nightKill,protectedId=G.guard,deadId=(k!=null&&k!==protectedId)?k:null;
+ if(deadId!=null&&!G.dead.includes(deadId))G.dead.push(deadId);
+ let result=win(),name=deadId==null?null:G.ps.find(p=>p.id==deadId).name;
+ app.innerHTML=`<section class="screen center"><div class="wrap">${header("天亮")}<div class="role">☀️</div><h2>${name?esc(name)+" 今晚死亡":"昨夜无人死亡"}</h2>${k===protectedId?`<div class="notice">骑士成功守护了目标。</div>`:""}${result?`<div class="notice big">${result}</div>`:""}${result?`<button class="btn" onclick="G.screen='end';render()">查看结果</button>`:`<button class="btn" onclick="G.screen='vote';render()">进入投票</button>`}</div></section>`
+}
+function vote(){
+ let choices=alive();
+ app.innerHTML=`<section class="screen"><div class="wrap">${header("白天投票")}<h2>投票处决</h2><p>讨论结束后，轮流拿手机选择要处决的人。</p><div class="player-list">${choices.map(p=>`<button class="player ${G.vote===p.id?"selected":""}" onclick="G.vote=${p.id};render()">${esc(p.name)}</button>`).join("")}</div>${G.vote!=null?`<button class="btn" onclick="executeVote()">确认处决</button>`:""}</div></section>`
+}
+function executeVote(){if(G.vote==null)return;G.dead.push(G.vote);G.vote=null;let result=win();if(result)G.screen="end";else{G.nightKill=null;G.seer=null;G.guard=null;G.screen="nightIntro"}render()}
+function end(){
+ app.innerHTML=`<section class="screen center"><div class="wrap">${header("游戏结束")}<div class="role">🏁</div><h2>${win()}</h2><div class="card"><b>最终身份</b>${G.ps.map(p=>`<p>${esc(p.name)}：${roleName[G.roles[p.id]]}${G.dead.includes(p.id)?"（死亡）":"（存活）"}</p>`).join("")}</div><button class="btn" onclick="G.screen='setup';render()">重新开始</button></div></section>`
+}
+render();
+</script>
+<script>
+/* Japanese UI / player confirmation flow */
+G.screen="setup"; G.namesReady=false;
+const roleNameJP={wolf:"人狼",seer:"占い師",knight:"騎士",villager:"村人"};
+function headerJP(t){return `<div class="top"><span class="badge">${G.players}人・人狼${G.wolves}人</span><span class="badge">${t}</span></div>`}
+function render(){({setup,revealIntro,revealGate,reveal,revealWolf,revealSeer,revealSeerResult,revealKnight,revealFinish,firstNightReady,nightIntro,nightHandoff,nightGate,nightAction,nightSeerResult,nightFinish,morning,vote,end}[G.screen]||setup)()}
+function setup(){app.innerHTML=`<section class="screen"><div class="wrap"><div class="sub">1台のスマートフォンで遊ぶ人狼ゲーム</div><h1>人狼ゲーム</h1><p>ゲーム開始前に、参加者全員の名前を登録してください。</p><div class="card"><b>参加人数</b><div class="grid" style="margin-top:10px">${[4,5,6,7,8].map(n=>`<button class="choice ${G.players==n?"active":""}" onclick="setPlayers(${n})">${n}人</button>`).join("")}</div></div><div class="card"><b>人狼の人数</b><div class="grid" style="margin-top:10px"><button class="choice ${G.wolves==1?"active":""}" onclick="setWolves(1)">1人</button><button class="choice ${G.wolves==2?"active":""}" onclick="setWolves(2)" ${G.players<5?"disabled":""}>2人</button></div><p class="small">人狼は1人または2人です。</p></div><div class="card"><b>参加者の名前</b><div class="player-list">${Array.from({length:G.players},(_,i)=>`<input class="name-input" id="name-${i}" value="${esc(G.ps[i]?.name||"")}" placeholder="プレイヤー${i+1}">`).join("")}</div></div><button class="btn" onclick="start()">ゲームを開始する</button></div></section>`}
+function readNamesJP(){return Array.from({length:G.players},(_,i)=>(document.getElementById("name-"+i)?.value||"").trim()||`プレイヤー${i+1}`)}
+function start(){const names=readNamesJP();G.ps=names.map((name,i)=>({id:i,name}));let r=Array(G.wolves).fill("wolf");r.push("seer","knight");while(r.length<G.players)r.push("villager");for(let i=r.length-1;i;i--){let j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]]}G.roles={};G.ps.forEach((p,i)=>G.roles[p.id]=r[i]);Object.assign(G,{dead:[],nightKill:null,seer:null,guard:null,vote:null,reveal:0,nightTurn:0,nightOrder:[],privatePlayer:null});G.screen="revealIntro";render()}
+function revealIntro(){app.innerHTML=`<section class="screen center"><div class="wrap"><div class="role">🔒</div><h2>役職を確認します</h2><p>登録した順番で、スマートフォンを1人ずつ回してください。</p><div class="notice">受け取った本人が「受け取りました」を押してください。初日の行動も役職確認に続けて行います。</div><button class="btn" onclick="G.screen='revealGate';render()">受け取りました</button></div></section>`}
+function revealGate(){let p=G.ps[G.reveal];app.innerHTML=`<section class="screen center"><div class="wrap">${headerJP("本人確認")}<div class="role">📱</div><h2>${esc(p.name)}さんですか？</h2><p>本人であることを確認してから、役職を表示します。</p><button class="btn" onclick="G.privatePlayer=${p.id};G.screen='reveal';render()">はい、私です</button></div></section>`}
+function reveal(){let p=G.ps[G.reveal],role=G.roles[p.id],extra="",next={wolf:["襲撃先を選ぶ","revealWolf"],seer:["占う相手を選ぶ","revealSeer"],knight:["護衛する相手を選ぶ","revealKnight"],villager:["役職を確認しました","revealFinish"]}[role];if(role==="wolf"&&G.wolves===2){let partner=G.ps.find(x=>G.roles[x.id]==="wolf"&&x.id!==p.id);extra=`<div class="notice">あなたの人狼仲間：<b>${esc(partner.name)}</b></div>`}app.innerHTML=`<section class="screen center"><div class="wrap">${headerJP("役職確認")}<div class="role">🔐</div><div class="sub">${esc(p.name)}</div><h2>${roleNameJP[role]}</h2>${extra}<button class="btn" onclick="G.screen='${next[1]}';render()">${next[0]}</button></div></section>`}
+function revealWolf(){let p=G.ps[G.reveal],choices=G.ps.filter(x=>G.roles[x.id]!=="wolf");app.innerHTML=`<section class="screen"><div class="wrap">${headerJP("初日の襲撃")}<h2>襲撃先を選ぶ</h2><p>${G.wolves===2&&G.nightKill!=null?"人狼仲間が選んだ相手を確認し、必要なら変更してください。":"今夜襲撃する相手を選んでください。"}</p><div class="player-list">${choices.map(x=>`<button class="player ${G.nightKill===x.id?"selected":""}" onclick="G.nightKill=${x.id};render()">${esc(x.name)}</button>`).join("")}</div>${G.nightKill!=null?`<button class="btn" onclick="G.screen='revealFinish';render()">この人を襲撃する</button>`:""}</div></section>`}
+function revealSeer(){let p=G.ps[G.reveal],choices=G.ps.filter(x=>x.id!==p.id);app.innerHTML=`<section class="screen"><div class="wrap">${headerJP("初日の占い")}<h2>占う相手を選ぶ</h2><div class="player-list">${choices.map(x=>`<button class="player ${G.seer===x.id?"selected":""}" onclick="G.seer=${x.id};render()">${esc(x.name)}</button>`).join("")}</div>${G.seer!=null?`<button class="btn" onclick="G.screen='revealSeerResult';render()">占う</button>`:""}</div></section>`}
+function revealSeerResult(){let n=G.ps.find(p=>p.id===G.seer).name,w=G.roles[G.seer]==="wolf";app.innerHTML=`<section class="screen center"><div class="wrap">${headerJP("占い結果")}<div class="role">🔮</div><h2>${esc(n)}</h2><div class="big ${w?"wolf":"human"}">${w?"人狼":"人狼ではない"}</div><button class="btn" onclick="G.screen='revealFinish';render()">結果を確認しました</button></div></section>`}
+function revealKnight(){let p=G.ps[G.reveal],choices=G.ps.filter(x=>x.id!==p.id);app.innerHTML=`<section class="screen"><div class="wrap">${headerJP("初日の護衛")}<h2>守る相手を選ぶ</h2><div class="player-list">${choices.map(x=>`<button class="player ${G.guard===x.id?"selected":""}" onclick="G.guard=${x.id};render()">${esc(x.name)}</button>`).join("")}</div>${G.guard!=null?`<button class="btn" onclick="G.screen='revealFinish';render()">この人を護衛する</button>`:""}</div></section>`}
+function revealFinish(){let last=G.reveal>=G.ps.length-1;app.innerHTML=`<section class="screen center"><div class="wrap"><div class="role">🔒</div><h2>画面を伏せてください</h2><p>${last?"全員が見られる位置に戻してから、次へ進んでください。":"次の人にスマートフォンを渡してください。"}</p><div class="notice">この画面には役職や選択内容は表示されていません。</div><button class="btn" onclick="nextReveal()">${last?"全員の確認を終える":"受け取りました"}</button></div></section>`}
+function nextReveal(){G.privatePlayer=null;G.reveal++;G.screen=G.reveal>=G.ps.length?"firstNightReady":"revealGate";render()}
+function firstNightReady(){app.innerHTML=`<section class="screen center"><div class="wrap"><div class="role">🌙</div><h2>全員の確認が終わりました</h2><p>役職と初日の行動は記録されています。</p><button class="btn" onclick="G.screen='morning';render()">朝を迎える</button></div></section>`}
+function nightIntro(){G.nightOrder=alive().map(p=>p.id);G.nightTurn=0;G.nightKill=null;G.seer=null;G.guard=null;app.innerHTML=`<section class="screen center"><div class="wrap"><div class="role">🌙</div><h2>夜になりました</h2><p>生存している全員が、登録順にスマートフォンを受け取ります。</p><div class="notice">役職に関係なく全員に順番が来ます。画面を伏せてから次の人に渡してください。</div><button class="btn" onclick="G.screen='nightHandoff';render()">夜の行動を始める</button></div></section>`}
+function currentNightPlayer(){return G.ps.find(p=>p.id===G.nightOrder[G.nightTurn])}
+function nightHandoff(){let last=G.nightTurn>=G.nightOrder.length;app.innerHTML=`<section class="screen center"><div class="wrap"><div class="role">${last?"🌙":"🔒"}</div><h2>${last?"全員の操作が終わりました":"次の人に渡してください"}</h2><p>${last?"全員が見られる位置にスマートフォンを戻してください。":"受け取った本人が下のボタンを押してください。"}</p><button class="btn" onclick="G.screen='${last?"morning":"nightGate"}';render()">${last?"朝を迎える":"受け取りました"}</button></div></section>`}
+function nightGate(){let p=currentNightPlayer();app.innerHTML=`<section class="screen center"><div class="wrap">${headerJP("本人確認")}<div class="role">📱</div><h2>${esc(p.name)}さんですか？</h2><p>本人だけが画面を見てください。</p><button class="btn" onclick="G.privatePlayer=${p.id};G.screen='nightAction';render()">はい、私です</button></div></section>`}
+function nightAction(){let p=currentNightPlayer(),role=G.roles[p.id],choices,body;if(role==="wolf"){choices=alive().filter(x=>G.roles[x.id]!=="wolf");body=`<h2>襲撃先を選ぶ</h2><p>${G.wolves===2&&G.nightKill!=null?"人狼仲間の選択を確認し、必要なら変更してください。":"今夜襲撃する相手を選んでください。"}</p><div class="player-list">${choices.map(x=>`<button class="player ${G.nightKill===x.id?"selected":""}" onclick="G.nightKill=${x.id};render()">${esc(x.name)}</button>`).join("")}</div>${G.nightKill!=null?`<button class="btn" onclick="G.screen='nightFinish';render()">襲撃先を決定する</button>`:""}`}else if(role==="seer"){choices=alive().filter(x=>x.id!==p.id);body=`<h2>占う相手を選ぶ</h2><div class="player-list">${choices.map(x=>`<button class="player ${G.seer===x.id?"selected":""}" onclick="G.seer=${x.id};render()">${esc(x.name)}</button>`).join("")}</div>${G.seer!=null?`<button class="btn" onclick="G.screen='nightSeerResult';render()">占う</button>`:""}`}else if(role==="knight"){choices=alive().filter(x=>x.id!==p.id);body=`<h2>守る相手を選ぶ</h2><div class="player-list">${choices.map(x=>`<button class="player ${G.guard===x.id?"selected":""}" onclick="G.guard=${x.id};render()">${esc(x.name)}</button>`).join("")}</div>${G.guard!=null?`<button class="btn" onclick="G.screen='nightFinish';render()">護衛先を決定する</button>`:""}`}else{body=`<div class="role">🌙</div><h2>夜の確認</h2><p>今夜行う操作はありません。</p><button class="btn" onclick="G.screen='nightFinish';render()">確認を終える</button>`}app.innerHTML=`<section class="screen ${role==="villager"?"center":""}"><div class="wrap">${headerJP("夜の個人画面")}${body}</div></section>`}
+function nightSeerResult(){let n=G.ps.find(p=>p.id===G.seer).name,w=G.roles[G.seer]==="wolf";app.innerHTML=`<section class="screen center"><div class="wrap">${headerJP("占い結果")}<div class="role">🔮</div><h2>${esc(n)}</h2><div class="big ${w?"wolf":"human"}">${w?"人狼":"人狼ではない"}</div><button class="btn" onclick="G.screen='nightFinish';render()">結果を確認しました</button></div></section>`}
+function nightFinish(){app.innerHTML=`<section class="screen center"><div class="wrap"><div class="role">🔒</div><h2>画面を伏せてください</h2><p>操作内容は保存されました</p><div class="notice">この画面には役職や選択内容は表示されていません。</div><button class="btn" onclick="G.privatePlayer=null;G.nightTurn++;G.screen='nightHandoff';render()">画面を伏せました</button></div></section>`}
+function morning(){let k=G.nightKill,protectedId=G.guard,deadId=(k!=null&&k!==protectedId)?k:null;if(deadId!=null&&!G.dead.includes(deadId))G.dead.push(deadId);let result=win(),name=deadId==null?null:G.ps.find(p=>p.id==deadId).name;app.innerHTML=`<section class="screen center"><div class="wrap">${headerJP("朝")}<div class="role">☀️</div><h2>${name?esc(name)+"さんが昨夜死亡しました":"昨夜は誰も死亡しませんでした"}</h2>${k===protectedId?`<div class="notice">騎士が襲撃先を守りました。</div>`:""}${result?`<div class="notice big">${result}</div>`:""}${result?`<button class="btn" onclick="G.screen='end';render()">結果を見る</button>`:`<button class="btn" onclick="G.screen='vote';render()">投票へ進む</button>`}</div></section>`}
+function vote(){let choices=alive();app.innerHTML=`<section class="screen"><div class="wrap">${headerJP("昼")}<h2>投票</h2><p>話し合いの後、処刑するプレイヤーを選択してください。</p><div class="player-list">${choices.map(p=>`<button class="player ${G.vote===p.id?"selected":""}" onclick="G.vote=${p.id};render()">${esc(p.name)}</button>`).join("")}</div>${G.vote!=null?`<button class="btn" onclick="executeVote()">この人を処刑する</button>`:""}</div></section>`}
+function executeVote(){if(G.vote==null)return;G.dead.push(G.vote);G.vote=null;let result=win();if(result)G.screen="end";else{G.nightKill=null;G.seer=null;G.guard=null;G.screen="nightIntro"}render()}
+function end(){app.innerHTML=`<section class="screen center"><div class="wrap">${headerJP("ゲーム終了")}<div class="role">🏁</div><h2>${win()}</h2><div class="card"><b>最終結果</b>${G.ps.map(p=>`<p>${esc(p.name)}：${roleNameJP[G.roles[p.id]]}${G.dead.includes(p.id)?"（死亡）":"（生存）"}</p>`).join("")}</div><button class="btn" onclick="location.reload()">最初からやり直す</button></div></section>`}
+render();
+</script>
+</body>
+</html>
